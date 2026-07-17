@@ -6,61 +6,21 @@ from fastembed.common.model_description import (
 )
 
 from core.config import StoreSettings
+from services.models_manager import ModelsManager
 
 
 class StoreManager:
     """Инициализирует qdrant хранилище"""
-    def __init__(self):
+    def __init__(self, models_manager: ModelsManager):
         self.client = QdrantClient(url=StoreSettings.QDRANT_URL, timeout=StoreSettings.TIMEOUT)
 
-        self.__init_models__()
+        self.models_manager = models_manager
+        self.gen_candidate_dense_model = self.models_manager.get_gen_candidate_dense_model()
+        self.title_sparse_model = self.models_manager.get_title_sparse_model()
+        self.body_sparse_model = self.models_manager.get_body_sparse_model()
         
         if not self.client.collection_exists(StoreSettings.COLLECTION_NAME):
             self.__init_collection__()
-
-    def __init_models__(self):
-        TextEmbedding.add_custom_model(
-            model=StoreSettings.GEN_CANDIDATE_DENSE_MODEL_NAME,
-            pooling=PoolingType.MEAN,
-            normalization=True,
-            sources=ModelSource(
-                hf=StoreSettings.GEN_CANDIDATE_DENSE_MODEL_NAME,
-            ),
-            dim=StoreSettings.GEN_CANDIDATE_DENSE_MODEL_DIM,
-            model_file=StoreSettings.GEN_CANDIDATE_DENSE_MODEL_MODEL_FILE,
-        )
-
-        self.gen_candidate_dense_model = TextEmbedding(
-            model_name=StoreSettings.GEN_CANDIDATE_DENSE_MODEL_NAME,
-        )
-
-        self.title_sparse_model = SparseTextEmbedding(
-            model_name=StoreSettings.SPARSE_MODEL_NAME,
-
-            # Русские стоп-слова и Snowball stemmer для русского языка
-            language=StoreSettings.SPARSE_TEXT_EMBEDDING_LANGUAGE,
-
-            # Стандартные параметры BM25
-            k=StoreSettings.SPARSE_TEXT_EMBEDDING_K,
-            b=StoreSettings.SPARSE_TEXT_EMBEDDING_B,
-
-            # Желательно подобрать под среднюю длину документов в корпусе
-            avg_len=StoreSettings.TITLE_SPARSE_TEXT_EMBEDDING_AVG_LEN,
-        )
-
-        self.body_sparse_model = SparseTextEmbedding(
-            model_name=StoreSettings.SPARSE_MODEL_NAME,
-
-            # Русские стоп-слова и Snowball stemmer для русского языка
-            language=StoreSettings.SPARSE_TEXT_EMBEDDING_LANGUAGE,
-
-            # Стандартные параметры BM25
-            k=StoreSettings.SPARSE_TEXT_EMBEDDING_K,
-            b=StoreSettings.SPARSE_TEXT_EMBEDDING_B,
-
-            # Желательно подобрать под среднюю длину документов в корпусе
-            avg_len=StoreSettings.BODY_SPARSE_TEXT_EMBEDDING_AVG_LEN,
-        )
 
     def __init_collection__(self):
         self.client.create_collection(
@@ -93,12 +53,3 @@ class StoreManager:
 
     def get_client(self):
         return self.client
-    
-    def get_title_sparse_model(self):
-        return self.title_sparse_model
-    
-    def get_body_sparse_model(self):
-        return self.body_sparse_model
-    
-    def get_gen_candidate_dense_model(self):
-        return self.gen_candidate_dense_model

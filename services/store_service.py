@@ -3,15 +3,19 @@ from qdrant_client import models
 from services.store_manager import StoreManager
 from services.document_processor import BaseDocumentProcessor
 from core.config import StoreSettings
+from services.models_manager import ModelsManager
 
 
 class StoreService:
-    def __init__(self):
-        self.store_manager = StoreManager()
+    def __init__(self, store_manager: StoreManager, models_manager: ModelsManager):
+        self.store_manager = store_manager
         self.client = self.store_manager.get_client()
-        self.title_sparse_model = self.store_manager.get_title_sparse_model()
-        self.body_sparse_model = self.store_manager.get_body_sparse_model()
-        self.gen_candidate_dense_model = self.store_manager.get_gen_candidate_dense_model()
+
+        self.models_manager = models_manager
+        self.title_sparse_model = self.models_manager.get_title_sparse_model()
+        self.body_sparse_model = self.models_manager.get_body_sparse_model()
+        self.gen_candidate_dense_model = self.models_manager.get_gen_candidate_dense_model()
+        self.reranking_model = self.models_manager.get_reranking_model()
 
         self.base_document_processor = BaseDocumentProcessor()
 
@@ -29,13 +33,15 @@ class StoreService:
 
         article_ids = data["article_id"].to_list()
         titles = data["title"].to_list()
-        bodies = data["body"].to_list()
+        bodies = data["body_plain"].to_list()
+        bodies_for_sparse = data["body_lexical"].to_list()
+        bodies_for_dense = data["body_plain"].to_list()
 
         title_dense_vectors = self.__get_gen_candidate_dense_vectors__(titles)
-        body_dense_vectors = self.__get_gen_candidate_dense_vectors__(bodies)
+        body_dense_vectors = self.__get_gen_candidate_dense_vectors__(bodies_for_dense)
 
         title_sparse_vectors = self.__get_title_sparse_vectors__(titles)
-        body_sparse_vectors = self.__get_body_sparse_vectors__(bodies)
+        body_sparse_vectors = self.__get_body_sparse_vectors__(bodies_for_sparse)
 
         points: list[models.PointStruct] = []
 
@@ -95,7 +101,7 @@ class StoreService:
     def gen_candidates(
         self,
         query: str,
-        limit: int=50,
+        candidate_limit: int=50,
         prefetch_limit: int=100
     ):
         gen_candidate_dense_query = next(
@@ -161,117 +167,89 @@ class StoreService:
                 )
             ),
 
-            limit=limit,
+            limit=candidate_limit,
             with_payload=True
         )
 
         return response.points
+    
+    def reranking(
+        self,
+        query: str,
+        final_limit: int = 10,
+        candidate_limit: int = 50
+    ):
+        candidates = self.gen_candidates(query, candidate_limit)
 
-    # def hybrid_article_search(
-    #     self,
-    #     query: str,
-    #     limit: int = 10,
-    #     prefetch_limit: int = 50
-    # ):
-    #     dense_query = next(
-    #         self.dense_model.query_embed(query)
-    #     )
+        documents = [
+            (
+                f"Заголовок: {candidate.payload['title']}\n"
+                f"Текст: {candidate.payload['body']}"
+            )
+            for candidate in candidates
+        ]
 
-    #     sparse_query = next(
-    #         self.sparse_model.query_embed(query)
-    #     )
+        pairs = [
+            (query, document)
+            for document in documents
+        ]
 
-    #     sparse_vector = models.SparseVector(
-    #         indices=sparse_query.indices.tolist(),
-    #         values=sparse_query.values.tolist()
-    #     )
+        scores = self.reranking_model.predict(pairs)
 
-    #     response = self.client.query_points(
-    #         collection_name=StoreSettings.COLLECTION_NAME,
-    #         prefetch=[
-    #             # Поиск по заголовкам
-    #             models.Prefetch(
-    #                 query=sparse_vector,
-    #                 using=StoreSettings.SPARSE_TITLE_VECTOR_NAME,
-    #                 limit=prefetch_limit
-    #             ),
+        results = [
+            {
+                "article_id": candidate.id,
+                "score": float(score),
+                "title": candidate.payload["title"],
+                "body": candidate.payload["body"]
+            }
+            for candidate, score in zip(candidates, scores)
+        ]
 
-    #             # Поиск по текстам статей
-    #             models.Prefetch(
-    #                 query=sparse_vector,
-    #                 using=StoreSettings.SPARSE_BODY_VECTOR_NAME,
-    #                 limit=prefetch_limit
-    #             ),
+        results.sort(
+            key=lambda item: item["score"],
+            reverse=True
+        )
 
-    #             # Семантический поиск
-    #             models.Prefetch(
-    #                 query=dense_query.tolist(),
-    #                 using=StoreSettings.DENSE_TITLE_VECTOR_NAME,
-    #                 limit=prefetch_limit
-    #             ),
-
-    #             models.Prefetch(
-    #                 query=dense_query.tolist(),
-    #                 using=StoreSettings.DENSE_BODY_VECTOR_NAME,
-    #                 limit=prefetch_limit
-    #             )
-    #         ],
-
-    #         # Заголовок имеет больший вес
-    #         query=models.RrfQuery(
-    #             rrf=models.Rrf(
-    #                 weights=[
-    #                     2.0,  # title_sparse
-    #                     1.0,  # body_sparse
-    #                     2.0,  # title_dense
-    #                     1.0   # body_dense
-    #                 ]
-    #             )
-    #         ),
-
-    #         limit=limit,
-    #         with_payload=True
-    #     )
-
-    #     return response.points
+        return results[:final_limit]
     
     def hybrid_article_search_only_article_ids(
         self,
         query: str,
-        limit: int = 10,
-        prefetch_limit: int = 50
+        final_limit: int = 10,
+        candidate_limit: int = 50
     ) -> list[list[int]]:
-        results = self.gen_candidates(query, limit, prefetch_limit)
+        results = self.reranking(query, final_limit, candidate_limit)
 
         article_ids = []
         for result in results:
-            article_ids.append(result.id)
+            article_ids.append(result["article_id"])
 
         return article_ids
     
     def hybrid_article_search_only_article_ids_print(
         self,
         query: str,
-        limit: int = 10,
-        prefetch_limit: int = 50
+        final_limit: int = 10,
+        candidate_limit: int = 50
     ) -> list[list[int]]:
-        results = self.gen_candidates(query, limit, prefetch_limit)
+        results = self.reranking(query, final_limit, candidate_limit)
 
         for result in results:
-            print(result.id, end=" ")
+            print(result["article_id"], end=" ")
         
         print()
 
     def hybrid_article_search_print(
         self,
         query: str,
-        limit: int = 10,
-        prefetch_limit: int = 50
+        final_limit: int = 10,
+        candidate_limit: int = 50
     ) -> None:
-        results = self.gen_candidates(query, limit, prefetch_limit)
+        results = self.reranking(query, final_limit, candidate_limit)
 
         for result in results:
-            print(result.score)
-            print(result.payload["title"])
-            print(result.payload["body"][:200])
+            print(result["score"])
+            print(result["title"])
+            print(result["body"][:200])
             print()

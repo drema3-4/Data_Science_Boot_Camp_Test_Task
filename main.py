@@ -1,7 +1,11 @@
+from services.models_manager import ModelsManager
+from services.store_manager import StoreManager
 from services.store_service import StoreService
 
 
-store_service = StoreService()
+models_manager = ModelsManager()
+store_manager = StoreManager(models_manager)
+store_service = StoreService(store_manager, models_manager)
 
 while True:
     user_command = input(">>> ").strip()

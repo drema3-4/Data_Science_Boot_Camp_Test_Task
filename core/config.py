@@ -20,3 +20,6 @@ class StoreSettings:
     SPARSE_BODY_VECTOR_NAME = "body_sparse"
     DENSE_TITLE_VECTOR_NAME = "title_dense"
     DENSE_BODY_VECTOR_NAME = "body_dense"
+
+    RERANKING_MODEL_NAME = "Qwen/Qwen3-Reranker-0.6B"
+    RERANKING_MODEL_MAX_LENGTH = 512

@@ -12,7 +12,7 @@ class BaseDocumentProcessor:
 
         data["body_html"] = data["body"]
         data["body_plain"] = data["body"].apply(lambda x: self.__get_text_from_html__(x))
-        data["body_lexical"] = data["body"].apply(lambda x: self.__leave_only_text_and_numbers__(x))
+        data["body_lexical"] = data["body_plain"].apply(lambda x: self.__leave_only_text_and_numbers__(x))
 
         return data.copy(deep=True)
 
@@ -26,13 +26,11 @@ class BaseDocumentProcessor:
         # Получаем обычный текст
         text = soup.get_text(separator=" ", strip=True)
 
-        return " ".join(text)
+        return text
     
     def __leave_only_text_and_numbers__(self, plain_text: str) -> str:
-        text = plain_text.split(" ")
-
         # Приводим к нижнему регистру
-        text = text.lower()
+        text = plain_text.lower()
 
         # Оставляем слова и числа
         words = re.findall(r"[а-яёa-z0-9]+", text)
