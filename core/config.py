@@ -3,15 +3,18 @@ class StoreSettings:
     TIMEOUT = 30.0
     COLLECTION_NAME = "base_collection"
 
-    DENSE_MODEL_NAME = (
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    GEN_CANDIDATE_DENSE_MODEL_NAME = (
+        "intfloat/multilingual-e5-small"
     )
+    GEN_CANDIDATE_DENSE_MODEL_DIM=384
+    GEN_CANDIDATE_DENSE_MODEL_MODEL_FILE="onnx/model.onnx"
 
     SPARSE_MODEL_NAME = "Qdrant/bm25"
     SPARSE_TEXT_EMBEDDING_LANGUAGE = "russian"
     SPARSE_TEXT_EMBEDDING_K = 1.2
     SPARSE_TEXT_EMBEDDING_B = 0.75
-    SPARSE_TEXT_EMBEDDING_AVG_LEN = 256.0
+    TITLE_SPARSE_TEXT_EMBEDDING_AVG_LEN = 4.0
+    BODY_SPARSE_TEXT_EMBEDDING_AVG_LEN = 719.0
 
     SPARSE_TITLE_VECTOR_NAME = "title_sparse"
     SPARSE_BODY_VECTOR_NAME = "body_sparse"

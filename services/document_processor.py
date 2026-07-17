@@ -10,11 +10,13 @@ class BaseDocumentProcessor:
     def prepare_data(self, data_path: str) -> pd.DataFrame:
         data = pd.read_feather(data_path)
 
-        data["body"] = data["body"].apply(lambda x: self.__html_to_words__(x))
+        data["body_html"] = data["body"]
+        data["body_plain"] = data["body"].apply(lambda x: self.__get_text_from_html__(x))
+        data["body_lexical"] = data["body"].apply(lambda x: self.__leave_only_text_and_numbers__(x))
 
         return data.copy(deep=True)
 
-    def __html_to_words__(self, html: str) -> list[str]:
+    def __get_text_from_html__(self, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
 
         # Удаляем содержимое служебных тегов
@@ -23,6 +25,11 @@ class BaseDocumentProcessor:
 
         # Получаем обычный текст
         text = soup.get_text(separator=" ", strip=True)
+
+        return " ".join(text)
+    
+    def __leave_only_text_and_numbers__(self, plain_text: str) -> str:
+        text = plain_text.split(" ")
 
         # Приводим к нижнему регистру
         text = text.lower()

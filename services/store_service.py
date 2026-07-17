@@ -9,16 +9,20 @@ class StoreService:
     def __init__(self):
         self.store_manager = StoreManager()
         self.client = self.store_manager.get_client()
-        self.sparse_model = self.store_manager.sparse_model
-        self.dense_model = self.store_manager.dense_model
+        self.title_sparse_model = self.store_manager.get_title_sparse_model()
+        self.body_sparse_model = self.store_manager.get_body_sparse_model()
+        self.gen_candidate_dense_model = self.store_manager.get_gen_candidate_dense_model()
 
         self.base_document_processor = BaseDocumentProcessor()
 
-    def __get_sparse_vectors__(self, texts: list[str]):
-        return self.sparse_model.embed(texts)
+    def __get_title_sparse_vectors__(self, texts: list[str]):
+        return self.title_sparse_model.embed(texts)
     
-    def __get_dense_vectors__(self, texts: list[str]):
-        return self.dense_model.passage_embed(texts)
+    def __get_body_sparse_vectors__(self, texts: list[str]):
+        return self.body_sparse_model.embed(texts)
+    
+    def __get_gen_candidate_dense_vectors__(self, texts: list[str]):
+        return self.gen_candidate_dense_model.passage_embed(texts)
     
     def __make_points__(self, data_path) -> list[models.PointStruct]:
         data = self.base_document_processor.prepare_data(data_path)
@@ -27,11 +31,11 @@ class StoreService:
         titles = data["title"].to_list()
         bodies = data["body"].to_list()
 
-        title_dense_vectors = self.__get_dense_vectors__(titles)
-        body_dense_vectors = self.__get_dense_vectors__(bodies)
+        title_dense_vectors = self.__get_gen_candidate_dense_vectors__(titles)
+        body_dense_vectors = self.__get_gen_candidate_dense_vectors__(bodies)
 
-        title_sparse_vectors = self.__get_sparse_vectors__(titles)
-        body_sparse_vectors = self.__get_sparse_vectors__(bodies)
+        title_sparse_vectors = self.__get_title_sparse_vectors__(titles)
+        body_sparse_vectors = self.__get_body_sparse_vectors__(bodies)
 
         points: list[models.PointStruct] = []
 
@@ -88,23 +92,30 @@ class StoreService:
             wait=True
         )
 
-    def hybrid_article_search(
+    def gen_candidates(
         self,
         query: str,
-        limit: int = 10,
-        prefetch_limit: int = 50
+        limit: int=50,
+        prefetch_limit: int=100
     ):
-        dense_query = next(
-            self.dense_model.query_embed(query)
+        gen_candidate_dense_query = next(
+            self.gen_candidate_dense_model.query_embed(query)
         )
 
-        sparse_query = next(
-            self.sparse_model.query_embed(query)
+        title_sparse_query = next(
+            self.title_sparse_model.query_embed(query)
+        )
+        title_sparse_vector = models.SparseVector(
+            indices=title_sparse_query.indices.tolist(),
+            values=title_sparse_query.values.tolist()
         )
 
-        sparse_vector = models.SparseVector(
-            indices=sparse_query.indices.tolist(),
-            values=sparse_query.values.tolist()
+        body_sparse_query = next(
+            self.body_sparse_model.query_embed(query)
+        )
+        body_sparse_vector = models.SparseVector(
+            indices=body_sparse_query.indices.tolist(),
+            values=body_sparse_query.values.tolist()
         )
 
         response = self.client.query_points(
@@ -112,27 +123,27 @@ class StoreService:
             prefetch=[
                 # Поиск по заголовкам
                 models.Prefetch(
-                    query=sparse_vector,
+                    query=title_sparse_vector,
                     using=StoreSettings.SPARSE_TITLE_VECTOR_NAME,
                     limit=prefetch_limit
                 ),
 
                 # Поиск по текстам статей
                 models.Prefetch(
-                    query=sparse_vector,
+                    query=body_sparse_vector,
                     using=StoreSettings.SPARSE_BODY_VECTOR_NAME,
                     limit=prefetch_limit
                 ),
 
                 # Семантический поиск
                 models.Prefetch(
-                    query=dense_query.tolist(),
+                    query=gen_candidate_dense_query.tolist(),
                     using=StoreSettings.DENSE_TITLE_VECTOR_NAME,
                     limit=prefetch_limit
                 ),
 
                 models.Prefetch(
-                    query=dense_query.tolist(),
+                    query=gen_candidate_dense_query.tolist(),
                     using=StoreSettings.DENSE_BODY_VECTOR_NAME,
                     limit=prefetch_limit
                 )
@@ -155,6 +166,74 @@ class StoreService:
         )
 
         return response.points
+
+    # def hybrid_article_search(
+    #     self,
+    #     query: str,
+    #     limit: int = 10,
+    #     prefetch_limit: int = 50
+    # ):
+    #     dense_query = next(
+    #         self.dense_model.query_embed(query)
+    #     )
+
+    #     sparse_query = next(
+    #         self.sparse_model.query_embed(query)
+    #     )
+
+    #     sparse_vector = models.SparseVector(
+    #         indices=sparse_query.indices.tolist(),
+    #         values=sparse_query.values.tolist()
+    #     )
+
+    #     response = self.client.query_points(
+    #         collection_name=StoreSettings.COLLECTION_NAME,
+    #         prefetch=[
+    #             # Поиск по заголовкам
+    #             models.Prefetch(
+    #                 query=sparse_vector,
+    #                 using=StoreSettings.SPARSE_TITLE_VECTOR_NAME,
+    #                 limit=prefetch_limit
+    #             ),
+
+    #             # Поиск по текстам статей
+    #             models.Prefetch(
+    #                 query=sparse_vector,
+    #                 using=StoreSettings.SPARSE_BODY_VECTOR_NAME,
+    #                 limit=prefetch_limit
+    #             ),
+
+    #             # Семантический поиск
+    #             models.Prefetch(
+    #                 query=dense_query.tolist(),
+    #                 using=StoreSettings.DENSE_TITLE_VECTOR_NAME,
+    #                 limit=prefetch_limit
+    #             ),
+
+    #             models.Prefetch(
+    #                 query=dense_query.tolist(),
+    #                 using=StoreSettings.DENSE_BODY_VECTOR_NAME,
+    #                 limit=prefetch_limit
+    #             )
+    #         ],
+
+    #         # Заголовок имеет больший вес
+    #         query=models.RrfQuery(
+    #             rrf=models.Rrf(
+    #                 weights=[
+    #                     2.0,  # title_sparse
+    #                     1.0,  # body_sparse
+    #                     2.0,  # title_dense
+    #                     1.0   # body_dense
+    #                 ]
+    #             )
+    #         ),
+
+    #         limit=limit,
+    #         with_payload=True
+    #     )
+
+    #     return response.points
     
     def hybrid_article_search_only_article_ids(
         self,
@@ -162,7 +241,7 @@ class StoreService:
         limit: int = 10,
         prefetch_limit: int = 50
     ) -> list[list[int]]:
-        results = self.hybrid_article_search(query, limit, prefetch_limit)
+        results = self.gen_candidates(query, limit, prefetch_limit)
 
         article_ids = []
         for result in results:
@@ -176,7 +255,7 @@ class StoreService:
         limit: int = 10,
         prefetch_limit: int = 50
     ) -> list[list[int]]:
-        results = self.hybrid_article_search(query, limit, prefetch_limit)
+        results = self.gen_candidates(query, limit, prefetch_limit)
 
         for result in results:
             print(result.id, end=" ")
@@ -189,7 +268,7 @@ class StoreService:
         limit: int = 10,
         prefetch_limit: int = 50
     ) -> None:
-        results = self.hybrid_article_search(query, limit, prefetch_limit)
+        results = self.gen_candidates(query, limit, prefetch_limit)
 
         for result in results:
             print(result.score)
