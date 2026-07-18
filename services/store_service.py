@@ -103,7 +103,7 @@ class StoreService:
         query: str,
         candidate_limit: int=50,
         prefetch_limit: int=100
-    ):
+    ) -> list[models.ScoredPoint]:
         gen_candidate_dense_query = next(
             self.gen_candidate_dense_model.query_embed(query)
         )
