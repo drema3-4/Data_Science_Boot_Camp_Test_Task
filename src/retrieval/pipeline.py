@@ -31,7 +31,7 @@ class SearchPipeline:
         if self.reranker is None or (not with_reranker):
             results = [
                 PipelineResponse(
-                    article_id=candidate.id,
+                    article_id=int(candidate.payload.get("article_id", candidate.id)),
                     score=float(candidate.score),
                     retrieval_score=float(candidate.score),
                     title=candidate.payload["title"],
@@ -42,11 +42,12 @@ class SearchPipeline:
         
         if isinstance(self.reranker, Reranker) and with_reranker:
             documents = [
-                "\n".join(
-                    [
-                        f"{field_name}: {candidate.payload[field_name]}"
-                        for field_name in self.schema.payload_fields
-                    ]
+                candidate.payload.get(
+                    "rerank_text",
+                    (
+                        f"Заголовок: {candidate.payload['title']}\n"
+                        f"Текст: {candidate.payload['body_plain']}"
+                    )
                 )
                 for candidate in candidates
             ]
@@ -55,7 +56,7 @@ class SearchPipeline:
 
             results = [
                 PipelineResponse(
-                    article_id=candidate.id,
+                    article_id=int(candidate.payload.get("article_id", candidate.id)),
                     score=float(score),
                     retrieval_score=float(candidate.score),
                     title=candidate.payload["title"],
@@ -69,4 +70,14 @@ class SearchPipeline:
                 reverse=True
             )
 
-        return results[:final_limit]
+        unique_results = []
+        seen_article_ids = set()
+
+        for result in results:
+            if result.article_id in seen_article_ids:
+                continue
+
+            seen_article_ids.add(result.article_id)
+            unique_results.append(result)
+
+        return unique_results[:final_limit]

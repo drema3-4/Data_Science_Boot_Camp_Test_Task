@@ -27,38 +27,56 @@ def make_base_schema(
     return CollectionSchema(
         collection_name="base_collection",
         vector_fields=[
-            VectorFieldConfig(
-                name="title_sparse",
-                kind="sparse",
-                source_field="title",
-                model_config=title_sparse_config,
-                weight=2.0
-            ),
-            VectorFieldConfig(
-                name="body_sparse",
-                kind="sparse",
-                source_field="body_lexical",
-                model_config=body_sparse_config,
-                weight=1.0
-            ),
-            VectorFieldConfig(
-                name="title_dense",
-                kind="dense",
-                source_field="title",
-                model_config=dense_config,
-                weight=2.0
-            ),
-            VectorFieldConfig(
-                name="body_dense",
-                kind="dense",
-                source_field="body_plain",
-                model_config=dense_config,
-                weight=1.0
-            )
+            VectorFieldConfig(name="title_sparse", kind="sparse", source_field="title", model_config=title_sparse_config, weight=2.0),
+            VectorFieldConfig(name="body_sparse", kind="sparse", source_field="body_lexical", model_config=body_sparse_config, weight=1.0),
+            VectorFieldConfig(name="title_dense", kind="dense", source_field="title", model_config=dense_config, weight=2.0),
+            VectorFieldConfig( name="body_dense", kind="dense", source_field="body_plain", model_config=dense_config, weight=1.0)
         ],
         payload_fields=[
             "title",
             "body_plain"
         ],
         id_field="article_id"
+    )
+
+def make_chunked_body_schema(
+    title_sparse_config: SparseEmbedderConfig,
+    body_sparse_config: SparseEmbedderConfig,
+    dense_config: DenseEmbedderConfig
+):
+    return CollectionSchema(
+        collection_name="chunked_body_collection",
+        vector_fields=[
+            VectorFieldConfig("body_sparse", "sparse", "body_lexical", body_sparse_config, 2.0),
+            VectorFieldConfig("body_dense", "dense", "body_plain", dense_config, 1.0),
+        ],
+        payload_fields=[
+            "article_id",
+            "chunk_id",
+            "title",
+            "body_plain",
+        ],
+        id_field="point_id",
+    )
+
+def make_section_chunked_schema(
+    title_sparse_config: SparseEmbedderConfig,
+    body_sparse_config: SparseEmbedderConfig,
+    dense_config: DenseEmbedderConfig
+):
+    return CollectionSchema(
+        collection_name="section_chunked_collection",
+        vector_fields=[
+            VectorFieldConfig("body_sparse", "sparse", "body_lexical", body_sparse_config, 2.0),
+            VectorFieldConfig("body_dense", "dense", "body_plain", dense_config, 1.0),
+        ],
+        payload_fields=[
+            "article_id",
+            "chunk_id",
+            "point_type",
+            "title",
+            "body_plain",
+            "rerank_text",
+        ],
+        id_field="point_id",
     )

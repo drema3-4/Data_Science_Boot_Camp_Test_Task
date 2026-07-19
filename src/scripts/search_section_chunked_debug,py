@@ -1,0 +1,38 @@
+from pathlib import Path
+import sys
+
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from app.bootstrap import build_section_chunked_search_pipeline
+
+
+def main():
+    pipeline = build_section_chunked_search_pipeline(with_reranker=True)
+
+    query = "Как отправить заказ через Авито?"
+
+    results = pipeline.search(
+        query=query,
+        final_limit=10,
+        candidate_limit=150,
+        prefetch_limit=200,
+        with_reranker=True,
+    )
+
+    print(f"Query: {query}")
+    print()
+
+    for rank, result in enumerate(results, start=1):
+        print(f"{rank}. article_id={result.article_id}")
+        print(f"score={result.score:.4f}")
+        print(f"retrieval_score={result.retrieval_score:.4f}")
+        print(f"title={result.title}")
+        print(f"body={result.body[:500]}")
+        print("-" * 80)
+
+
+if __name__ == "__main__":
+    main()

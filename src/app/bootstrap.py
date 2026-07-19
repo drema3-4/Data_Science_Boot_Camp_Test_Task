@@ -4,9 +4,9 @@ import torch
 from fastembed.common.model_description import ModelSource
 
 from data.loaders import load_calibration_samples, load_raw_articles, load_test_samples
-from data.processing import base_article_processor
+from data.processing import base_article_processor, chunked_article_processor, section_chunked_article_processor
 from evaluation.evaluator import Evaluator
-from indexing.collection_schema import CollectionSchema, make_base_schema
+from indexing.collection_schema import CollectionSchema, make_base_schema, make_chunked_body_schema, make_section_chunked_schema
 from indexing.point_builder import ArticlePointBuilder
 from indexing.qdrant_store import QdrantStore
 from models.configs import DenseEmbedderConfig, RerankerConfig, SparseEmbedderConfig
@@ -136,5 +136,104 @@ def load_base_processed_articles():
 def load_base_calibration_samples():
     return load_calibration_samples(str(CALIBRATION_PATH))
 
+
 def load_base_test_samples():
     return load_test_samples(str(TEST_PATH))
+
+
+def build_chunked_body_collection_schema() -> CollectionSchema:
+    dense_config = build_dense_config()
+
+    return make_chunked_body_schema(
+        build_title_sparse_config(),
+        build_body_sparse_config(),
+        dense_config,
+    )
+
+
+def load_chunked_body_processed_articles():
+    raw_articles = load_raw_articles(str(ARTICLES_PATH))
+
+    return chunked_article_processor(
+        raw_articles,
+        chunk_size=180,
+        overlap=40,
+    )
+
+
+def build_chunked_body_search_pipeline(with_reranker: bool = True) -> SearchPipeline:
+    schema = build_chunked_body_collection_schema()
+    qdrant_store = build_qdrant_store()
+    model_factory = build_model_factory()
+
+    retriever = build_hybrid_qdrant_retriever(
+        qdrant_store,
+        model_factory,
+        schema,
+    )
+
+    reranker = None
+    if with_reranker:
+        reranker = model_factory.make_model(build_reranker_config())
+
+    return SearchPipeline(
+        retriever=retriever,
+        reranker=reranker,
+        schema=schema,
+    )
+
+
+def build_chunked_body_evaluator(with_reranker: bool = True) -> Evaluator:
+    return Evaluator(
+        build_chunked_body_search_pipeline(with_reranker=with_reranker),
+    )
+
+
+def build_section_chunked_collection_schema() -> CollectionSchema:
+    dense_config = build_dense_config()
+
+    return make_section_chunked_schema(
+        build_title_sparse_config(),
+        build_body_sparse_config(),
+        dense_config,
+    )
+
+
+def load_section_chunked_processed_articles():
+    raw_articles = load_raw_articles(str(ARTICLES_PATH))
+
+    return section_chunked_article_processor(
+        raw_articles,
+        chunk_size=160,
+        overlap=30,
+    )
+
+
+def build_section_chunked_search_pipeline(
+    with_reranker: bool = True
+) -> SearchPipeline:
+    schema = build_section_chunked_collection_schema()
+    qdrant_store = build_qdrant_store()
+    model_factory = build_model_factory()
+
+    retriever = build_hybrid_qdrant_retriever(
+        qdrant_store,
+        model_factory,
+        schema,
+    )
+
+    reranker = None
+    if with_reranker:
+        reranker = model_factory.make_model(build_reranker_config())
+
+    return SearchPipeline(
+        retriever=retriever,
+        reranker=reranker,
+        schema=schema,
+    )
+
+
+def build_section_chunked_evaluator(with_reranker: bool = True) -> Evaluator:
+    return Evaluator(
+        build_section_chunked_search_pipeline(with_reranker=with_reranker),
+    )
