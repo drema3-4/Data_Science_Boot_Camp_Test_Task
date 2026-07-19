@@ -1,0 +1,8 @@
+{
+  "schema": "section_chunked",
+  "candidate_limit": 150,
+  "prefetch_limit": 200,
+  "final_limit": 10,
+  "recall@10": 0.8241666666666666,
+  "map@10": 0.49850396825396825
+}

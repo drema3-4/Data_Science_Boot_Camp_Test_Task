@@ -1,6 +1,10 @@
 from qdrant_client import QdrantClient, models
+from tqdm.auto import tqdm
 
 from indexing.collection_schema import CollectionSchema
+
+
+DEFAULT_UPSERT_BATCH_SIZE = 128
 
 
 class QdrantStore:
@@ -31,9 +35,21 @@ class QdrantStore:
             }
         )
 
-    def upsert_points(self, collection_name, points):
-        self.client.upsert(
-            collection_name=collection_name,
-            points=points,
-            wait=True
-        )
+    def upsert_points(
+        self,
+        collection_name,
+        points,
+        batch_size: int = DEFAULT_UPSERT_BATCH_SIZE,
+    ):
+        for start in tqdm(
+            range(0, len(points), batch_size),
+            desc="Uploading Qdrant batches",
+            unit="batch",
+        ):
+            batch = points[start:start + batch_size]
+
+            self.client.upsert(
+                collection_name=collection_name,
+                points=batch,
+                wait=True
+            )
