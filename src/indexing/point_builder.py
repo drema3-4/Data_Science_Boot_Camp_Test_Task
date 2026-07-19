@@ -1,13 +1,33 @@
+from itertools import islice
+
 from qdrant_client import models
+from tqdm.auto import tqdm
 
 from models.factory import ModelFactory
 from data.types import BaseProcessedArticle
 from indexing.collection_schema import CollectionSchema
 
 
+EMBEDDING_PROGRESS_BATCH_SIZE = 128
+
+
 class ArticlePointBuilder:
     def __init__(self, model_factory: ModelFactory):
         self.model_factory = model_factory
+
+    def _collect_vectors_with_progress(self, vectors, total: int, desc: str):
+        collected_vectors = []
+
+        with tqdm(total=total, desc=desc, unit="text") as progress:
+            while True:
+                batch = list(islice(vectors, EMBEDDING_PROGRESS_BATCH_SIZE))
+                if not batch:
+                    break
+
+                collected_vectors.extend(batch)
+                progress.update(len(batch))
+
+        return collected_vectors
 
     def build_points(
         self,
@@ -25,9 +45,17 @@ class ArticlePointBuilder:
             model = self.model_factory.make_model(vector_field.model_config)
 
             if vector_field.kind == "dense":
-                vectors = list(model.embed_documents(texts))
+                vectors = self._collect_vectors_with_progress(
+                    model.embed_documents(texts),
+                    total=len(texts),
+                    desc=f"Embedding {vector_field.name}",
+                )
             elif vector_field.kind == "sparse":
-                vectors = list(model.embed_documents(texts))
+                vectors = self._collect_vectors_with_progress(
+                    model.embed_documents(texts),
+                    total=len(texts),
+                    desc=f"Embedding {vector_field.name}",
+                )
             else:
                 raise ValueError(...)
 
@@ -35,7 +63,11 @@ class ArticlePointBuilder:
 
         points = []
 
-        for index, document in enumerate(documents):
+        for index, document in enumerate(tqdm(
+            documents,
+            desc="Building Qdrant points",
+            unit="point",
+        )):
             point_vectors = {}
 
             for vector_field in schema.vector_fields:
