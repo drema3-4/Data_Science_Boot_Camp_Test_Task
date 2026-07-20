@@ -3,15 +3,18 @@ import json
 import sys
 from datetime import datetime
 
+from tqdm.auto import tqdm
+
 
 SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from app.bootstrap import (
-    build_chunked_body_evaluator,
+    build_chunked_body_search_pipeline,
     load_base_calibration_samples,
 )
+from evaluation.metrics import recall_k, map_k
 
 
 RUNS_DIR = SRC_DIR / "runs"
@@ -19,21 +22,57 @@ RUNS_DIR = SRC_DIR / "runs"
 
 def main():
     calibration_samples = load_base_calibration_samples()
-    evaluator = build_chunked_body_evaluator(with_reranker=True)
+    pipeline = build_chunked_body_search_pipeline(with_reranker=True)
 
-    recall_at_10, map_at_10 = evaluator.evaluate(calibration_samples, k=10)
+    all_predictions = []
+    all_relevants = []
 
-    candidate_recall_at_50 = evaluator.evaluate_candidate_generation(
+    for sample in tqdm(
         calibration_samples,
-        candidate_limit=50,
-        k=50,
-    )
+        desc="Evaluating chunked body",
+        unit="query",
+    ):
+        results = pipeline.search(
+            query=sample.query,
+            final_limit=10,
+        )
+
+        predicted_ids = [
+            result.article_id
+            for result in results
+        ]
+
+        all_predictions.append(predicted_ids)
+        all_relevants.append(sample.ground_truth)
+
+    candidate_predictions = []
+    candidate_relevants = []
+
+    for sample in tqdm(
+        calibration_samples,
+        desc="Evaluating chunked body candidates",
+        unit="query",
+    ):
+        results = pipeline.search(
+            query=sample.query,
+            final_limit=50,
+            candidate_limit=50,
+            with_reranker=False,
+        )
+
+        predicted_ids = [
+            result.article_id
+            for result in results
+        ]
+
+        candidate_predictions.append(predicted_ids)
+        candidate_relevants.append(sample.ground_truth)
 
     metrics = {
         "schema": "chunked_body",
-        "recall@10": recall_at_10,
-        "map@10": map_at_10,
-        "candidate_recall@50": candidate_recall_at_50,
+        "recall@10": recall_k(all_predictions, all_relevants, 10),
+        "map@10": map_k(all_predictions, all_relevants, 10),
+        "candidate_recall@50": recall_k(candidate_predictions, candidate_relevants, 50),
     }
 
     run_dir = RUNS_DIR / datetime.now().strftime("%Y%m%d_%H%M%S_chunked_body")
