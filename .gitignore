@@ -1,3 +1,4 @@
 /.venv
 src/qdrant_storage/
+src/data_sources/generated/points/
 __pycache__/

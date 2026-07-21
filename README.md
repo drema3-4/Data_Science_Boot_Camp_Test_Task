@@ -1,3 +1,10 @@
+# Дополнительные ответы
+
+В папке `src/answers` лежат ответы для схем `chunked_body` и `section_chunked`, которые я не успел отправить из-за долгой работы реранкера. На локальном evaluation обе схемы показывают качество выше базовой схемы, поэтому эти ответы можно отдельно протестировать:
+
+- `src/answers/chunked_body_answers/answer.csv`
+- `src/answers/section_chunked_answers/answer.csv`
+
 # Avito Data Science Bootcamp Test Task
 
 Проект решает задачу информационного поиска по статьям справки Avito: по текстовому запросу нужно вернуть релевантные `article_id` в формате `answer.csv`.

@@ -13,16 +13,26 @@ from app.bootstrap import (
     build_qdrant_store,
     load_base_processed_articles,
 )
+from indexing.point_io import get_points_path, load_points, save_points
 
 
 def main():
     schema = build_base_collection_schema()
     qdrant_store = build_qdrant_store()
-    model_factory = build_model_factory()
-    article_point_builder = build_article_point_builder(model_factory)
+    points_path = get_points_path(schema)
 
-    processed_articles = load_base_processed_articles()
-    points = article_point_builder.build_points(processed_articles, schema)
+    if points_path.exists():
+        print(f"Loading cached Qdrant points: {points_path}")
+        points = load_points(points_path)
+        print(f"Loaded points: {len(points)}")
+    else:
+        model_factory = build_model_factory()
+        article_point_builder = build_article_point_builder(model_factory)
+
+        processed_articles = load_base_processed_articles()
+        points = article_point_builder.build_points(processed_articles, schema)
+        save_points(points, points_path)
+        print(f"Saved Qdrant points: {points_path}")
 
     qdrant_store.create_collection(schema)
     qdrant_store.upsert_points(

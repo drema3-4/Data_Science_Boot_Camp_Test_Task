@@ -15,6 +15,7 @@ from app.bootstrap import (
     build_qdrant_store,
     load_chunked_body_processed_articles,
 )
+from indexing.point_io import get_points_path, load_points, save_points
 
 
 def main():
@@ -30,19 +31,34 @@ def main():
     point_builder = build_article_point_builder(model_factory)
     progress.update(1)
 
-    progress.set_description("Processing article chunks")
-    processed_chunks = load_chunked_body_processed_articles()
-    tqdm.write(f"Processed chunks: {len(processed_chunks)}")
-    progress.update(1)
+    points_path = get_points_path(schema)
+
+    points_are_cached = points_path.exists()
+
+    if points_are_cached:
+        progress.set_description("Loading cached Qdrant points")
+        points = load_points(points_path)
+        tqdm.write(f"Loaded cached points: {len(points)} from {points_path}")
+        progress.update(1)
+    else:
+        progress.set_description("Processing article chunks")
+        processed_chunks = load_chunked_body_processed_articles()
+        tqdm.write(f"Processed chunks: {len(processed_chunks)}")
+        progress.update(1)
 
     progress.set_description("Creating collection")
     qdrant_store.create_collection(schema)
     progress.update(1)
 
-    progress.set_description("Building Qdrant points")
-    points = point_builder.build_points(processed_chunks, schema)
-    tqdm.write(f"Built points: {len(points)}")
-    progress.update(1)
+    if points_are_cached:
+        progress.update(1)
+    else:
+        progress.set_description("Building Qdrant points")
+        points = point_builder.build_points(processed_chunks, schema)
+        tqdm.write(f"Built points: {len(points)}")
+        save_points(points, points_path)
+        tqdm.write(f"Saved Qdrant points: {points_path}")
+        progress.update(1)
 
     progress.set_description("Uploading to Qdrant")
     qdrant_store.upsert_points(schema.collection_name, points)
